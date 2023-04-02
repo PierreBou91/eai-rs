@@ -1,23 +1,24 @@
-use crate::utils::{UserSettings, ABSTRACT_SYNTAXES};
-use dicom::core::{DataElement, PrimitiveValue, VR};
-use dicom::dicom_value;
+use crate::response_builders::{create_cecho_response, create_cstore_response};
+use crate::settings_handler::{load_settings, UserSettings};
+use crate::utils::ABSTRACT_SYNTAXES;
 use dicom::dictionary_std::tags;
 use dicom::encoding::TransferSyntaxIndex;
-use dicom::object::{FileMetaTableBuilder, InMemDicomObject, StandardDataDictionary};
+use dicom::object::{FileMetaTableBuilder, InMemDicomObject};
 use dicom::transfer_syntax::TransferSyntaxRegistry;
 use dicom_ul::pdu::PDataValueType;
 use dicom_ul::{self, Pdu};
 use snafu::{OptionExt, ResultExt, Whatever};
-use std::env;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber;
 
+pub mod response_builders;
+pub mod settings_handler;
 pub mod utils;
 
 fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
     let UserSettings {
-        verbose,
+        log_level,
         calling_ae_title,
         strict,
         uncompressed_only,
@@ -25,7 +26,7 @@ fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
         out_dir,
         port: _,
     } = args;
-    let verbose = *verbose;
+    let log_level = *log_level;
 
     let mut buffer: Vec<u8> = Vec::with_capacity(*max_pdu_length as usize);
     let mut instance_buffer: Vec<u8> = Vec::with_capacity(1024 * 1024);
@@ -67,7 +68,7 @@ fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
     loop {
         match association.receive() {
             Ok(mut pdu) => {
-                if verbose {
+                if log_level == Level::DEBUG {
                     debug!("scu ----> scp: {}", pdu.short_description());
                 }
                 match pdu {
@@ -76,26 +77,27 @@ fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
                             debug!("Ignoring empty PData PDU");
                             continue;
                         }
-                        debug!("FIRST");
                         if data[0].value_type == PDataValueType::Data && !data[0].is_last {
                             instance_buffer.append(&mut data[0].data);
                         } else if data[0].value_type == PDataValueType::Command && data[0].is_last {
                             // commands are always in implict VR LE
-                            debug!("SECOND");
-                            debug!("data: {:?}", data);
                             let ts =
                                 dicom_transfer_syntax_registry::entries::IMPLICIT_VR_LITTLE_ENDIAN
                                     .erased();
+
                             let data_value = &data[0];
+
                             let v = &data_value.data;
 
                             let obj = InMemDicomObject::read_dataset_with_ts(v.as_slice(), &ts)
                                 .whatever_context("failed to read incoming DICOM command")?;
+
                             let command_field = obj
                                 .element(tags::COMMAND_FIELD)
                                 .whatever_context("missing Command Field")?
                                 .uint16()
                                 .whatever_context("Command Field is not an integer")?;
+
                             if command_field == 0x0030 {
                                 // Handle C-ECHO-RQ
                                 let cecho_response = create_cecho_response(msgid);
@@ -116,19 +118,20 @@ fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
                                 association.send(&pdu_response).whatever_context(
                                     "failed to send C-ECHO response object to SCU",
                                 )?;
-                                // continue;
                             } else {
                                 msgid = obj
                                     .element(tags::MESSAGE_ID)
                                     .whatever_context("Missing Message ID")?
                                     .to_int()
                                     .whatever_context("Message ID is not an integer")?;
+
                                 sop_class_uid = obj
                                     .element(tags::AFFECTED_SOP_CLASS_UID)
                                     .whatever_context("missing Affected SOP Class UID")?
                                     .to_str()
                                     .whatever_context("could not retrieve Affected SOP Class UID")?
                                     .to_string();
+
                                 sop_instance_uid = obj
                                     .element(tags::AFFECTED_SOP_INSTANCE_UID)
                                     .whatever_context("missing Affected SOP Instance UID")?
@@ -238,117 +241,22 @@ fn run(scu_stream: TcpStream, args: &UserSettings) -> Result<(), Whatever> {
     Ok(())
 }
 
-fn create_cecho_response(message_id: u16) -> InMemDicomObject<StandardDataDictionary> {
-    let mut obj = InMemDicomObject::new_empty();
-
-    // group length
-    obj.put(DataElement::new(
-        tags::COMMAND_GROUP_LENGTH,
-        VR::UL,
-        PrimitiveValue::from(8 + 8 + 2 + 8 + 2 + 8 + 2),
-    ));
-
-    // command field
-    obj.put(DataElement::new(
-        tags::COMMAND_FIELD,
-        VR::US,
-        dicom_value!(U16, [0x8030]),
-    ));
-
-    // message ID being responded to
-    obj.put(DataElement::new(
-        tags::MESSAGE_ID_BEING_RESPONDED_TO,
-        VR::US,
-        dicom_value!(U16, [message_id]),
-    ));
-
-    // data set type
-    obj.put(DataElement::new(
-        tags::COMMAND_DATA_SET_TYPE,
-        VR::US,
-        dicom_value!(U16, [0x0101]),
-    ));
-
-    // status
-    obj.put(DataElement::new(
-        tags::STATUS,
-        VR::US,
-        dicom_value!(U16, [0x0000]),
-    ));
-
-    obj
-}
-
-fn create_cstore_response(
-    message_id: u16,
-    sop_class_uid: &str,
-    sop_instance_uid: &str,
-) -> InMemDicomObject<StandardDataDictionary> {
-    let mut obj = InMemDicomObject::new_empty();
-
-    // group length
-    obj.put(DataElement::new(
-        tags::COMMAND_GROUP_LENGTH,
-        VR::UL,
-        PrimitiveValue::from(
-            8 + sop_class_uid.len() as i32
-                + 8
-                + 2
-                + 8
-                + 2
-                + 8
-                + 2
-                + 8
-                + 2
-                + sop_instance_uid.len() as i32,
-        ),
-    ));
-
-    // service
-    obj.put(DataElement::new(
-        tags::AFFECTED_SOP_CLASS_UID,
-        VR::UI,
-        dicom_value!(Str, sop_class_uid),
-    ));
-    // command
-    obj.put(DataElement::new(
-        tags::COMMAND_FIELD,
-        VR::US,
-        dicom_value!(U16, [0x8001]),
-    ));
-    // message ID being responded to
-    obj.put(DataElement::new(
-        tags::MESSAGE_ID_BEING_RESPONDED_TO,
-        VR::US,
-        dicom_value!(U16, [message_id]),
-    ));
-    // data set type
-    obj.put(DataElement::new(
-        tags::COMMAND_DATA_SET_TYPE,
-        VR::US,
-        dicom_value!(U16, [0x0101]),
-    ));
-    // status https://dicom.nema.org/dicom/2013/output/chtml/part07/chapter_C.html
-    obj.put(DataElement::new(
-        tags::STATUS,
-        VR::US,
-        dicom_value!(U16, [0x0000]),
-    ));
-    // SOPInstanceUID
-    obj.put(DataElement::new(
-        tags::AFFECTED_SOP_INSTANCE_UID,
-        VR::UI,
-        dicom_value!(Str, sop_instance_uid),
-    ));
-
-    obj
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Adjust the logging level based on verbose level
+    let settings: UserSettings;
+
+    match load_settings() {
+        Ok(user_settings) => {
+            settings = user_settings;
+        }
+        Err(e) => {
+            error!("Failed to load UserSettings: {}", e);
+            std::process::exit(1);
+        }
+    }
+
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
+            .with_max_level(settings.log_level)
             .finish(),
     )
     .unwrap_or_else(|e| {
@@ -358,37 +266,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     });
 
-    let default_port = "11112";
-
-    let pacs_port = env::var("PACS_PORT").unwrap_or_else(|_| default_port.to_string());
-
-    let pacs_port_u16: u16 = pacs_port.parse::<u16>().unwrap_or_else(|e| {
-        eprintln!("Failed to parse the PACS_PORT environment variable: {}", e);
-        default_port.parse().expect("Failed to parse default_port")
-    });
-
-    let args: UserSettings = UserSettings {
-        verbose: true,
-        calling_ae_title: "STORE-SCP".to_owned(),
-        strict: false,
-        uncompressed_only: false,
-        max_pdu_length: 16384,
-        out_dir: ".".into(),
-        port: pacs_port_u16,
-    };
-
-    // let options = association::ServerAssociationOptions::new();
-    let listen_addr = SocketAddrV4::new(Ipv4Addr::from(0), args.port);
+    let listen_addr = SocketAddrV4::new(Ipv4Addr::from(0), settings.port);
     let listener = TcpListener::bind(listen_addr)?;
     info!(
         "{} listening on: tcp://{}",
-        &args.calling_ae_title, listen_addr
+        &settings.calling_ae_title, listen_addr
     );
 
     for stream in listener.incoming() {
         match stream {
             Ok(scu_stream) => {
-                if let Err(e) = run(scu_stream, &args) {
+                if let Err(e) = run(scu_stream, &settings) {
                     error!("{}", snafu::Report::from_error(e));
                 }
             }

@@ -414,6 +414,7 @@ dependencies = [
  "dicom-ul",
  "smallvec",
  "tracing",
+ "tracing-error",
  "tracing-subscriber",
 ]
 

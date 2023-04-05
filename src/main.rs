@@ -2,7 +2,7 @@ use std::thread::{self};
 
 use bogus::bogus_config;
 use color_eyre::eyre::Context;
-use tracing::{debug, info, subscriber};
+use tracing::{debug, subscriber, info};
 use tracing_subscriber::FmtSubscriber;
 
 use crate::{store_scp::store_scp, utils::Node};
@@ -35,15 +35,15 @@ fn main() -> color_eyre::Result<()> {
         .collect();
 
     for node in nodes {
-        info!("Launching the store scp for {}", node.aet);
-        let handle =
-            thread::spawn(move || store_scp(&node).wrap_err("Error launching the store_scp"));
+        info!("Launching the storescp for {} at {}:{}", node.aet, node.ip, node.port);
+        let handle = thread::spawn(move || {
+            store_scp(&node).unwrap() });
         handles.push(handle);
     }
 
     // Wait for all threads to complete
     for handle in handles {
-        handle.join().unwrap()?;
+        handle.join().unwrap();
     }
 
     // test the connection to the peers (echoscu)

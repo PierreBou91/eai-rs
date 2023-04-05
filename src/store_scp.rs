@@ -16,9 +16,14 @@ use crate::utils::{Node, ABSTRACT_SYNTAXES};
 /// store_SCP is a DICOM node that stores incoming data
 pub(crate) fn store_scp(node: &Node) -> color_eyre::Result<()> {
     let listen_addr = SocketAddrV4::new(Ipv4Addr::from(0), node.port);
-    let listener = TcpListener::bind(listen_addr)?;
-
-    // let out_dir = &node.out_dir;
+    let listener = match TcpListener::bind(listen_addr) {
+        Ok(l) => l,
+        Err(e) => {
+            warn!("Error binding the TCP listener at {}:{} : {}", node.ip, node.port, e);
+            return Ok(());
+        }
+    };
+ 
     let mut buffer: Vec<u8> = Vec::with_capacity(node.max_pdu as usize);
     let mut instance_buffer: Vec<u8> = Vec::with_capacity(1024 * 1024);
     let mut msgid = 1;

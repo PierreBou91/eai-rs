@@ -2,7 +2,12 @@ use std::{collections::HashMap, path::PathBuf};
 use tracing::Level;
 
 /// A Channel is a map of one source to many destinations
-pub(crate) type Channel = HashMap<Node, Vec<Node>>;
+// pub(crate) type Channel = HashMap<Node, Vec<Node>>;
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct Channel {
+    pub(crate) addresses: HashMap<Node, Vec<Node>>,
+    pub(crate) status: Status,
+}
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub(crate) struct Node {
@@ -20,14 +25,62 @@ pub(crate) struct Node {
     pub(crate) max_pdu: u32,
     /// The output directory
     pub(crate) out_dir: Option<PathBuf>,
+    /// The node's status
+    pub(crate) status: Status,
 }
-#[derive(Debug)]
+
+impl Node {
+    pub(crate) fn new(aet: String, ip: String, port: u16) -> Self {
+        Self {
+            aet,
+            ip,
+            port,
+            uncompressed_only: false,
+            strict: false,
+            max_pdu: 16384,
+            out_dir: Some(PathBuf::from(".")),
+            status: Default::default(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Eq, PartialEq, Hash, Clone)]
+pub(crate) enum Status {
+    Started,
+    #[default]
+    Stopped,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub(crate) struct Config {
     /// a map of channels to their id
     pub(crate) channels: HashMap<u64, Channel>,
     /// the log level of the application
     pub(crate) log_level: Level,
 }
+
+impl Config {
+    pub(crate) fn new() -> Self {
+        Self {
+            channels: HashMap::new(),
+            log_level: Level::INFO,
+        }
+    }
+
+    pub(crate) fn nodes(&self) -> Vec<Node> {
+        let mut nodes = Vec::new();
+        for channel in self.channels.values() {
+            for (node, _) in channel.addresses.iter() {
+                nodes.push(node.clone());
+            }
+        }
+        nodes
+    }
+
+    pub(crate) fn diff(&self, other: &Self) -> Option<Vec<Actions>> {}
+}
+
+pub(crate) type State = Config;
 
 pub(crate) static ABSTRACT_SYNTAXES: &[&str] = &[
     "1.2.840.10008.5.1.4.1.1.2",      // CT Image Storage

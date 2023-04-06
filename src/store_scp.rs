@@ -11,19 +11,22 @@ use dicom_ul::{association::ServerAssociationOptions, pdu::PDataValueType, Pdu};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use tracing::{debug, info, warn};
 
-use crate::utils::{Node, ABSTRACT_SYNTAXES};
+use crate::utils::{Node, Status, ABSTRACT_SYNTAXES};
 
 /// store_SCP is a DICOM node that stores incoming data
-pub(crate) fn store_scp(node: &Node) -> color_eyre::Result<()> {
+pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
     let listen_addr = SocketAddrV4::new(Ipv4Addr::from(0), node.port);
     let listener = match TcpListener::bind(listen_addr) {
         Ok(l) => l,
         Err(e) => {
-            warn!("Error binding the TCP listener at {}:{} : {}", node.ip, node.port, e);
+            warn!(
+                "Error binding the TCP listener at {}:{} : {}",
+                node.ip, node.port, e
+            );
             return Ok(());
         }
     };
- 
+
     let mut buffer: Vec<u8> = Vec::with_capacity(node.max_pdu as usize);
     let mut instance_buffer: Vec<u8> = Vec::with_capacity(1024 * 1024);
     let mut msgid = 1;
@@ -54,6 +57,7 @@ pub(crate) fn store_scp(node: &Node) -> color_eyre::Result<()> {
     debug!("Dicom node {:?} configuration: {:?}", node.aet, options); // TODO: improve the debug output
 
     info!("{:?} listening on {}:{}", node.aet, node.ip, node.port);
+    node.status = Status::Started;
 
     for tcp_stream in listener.incoming() {
         let stream = tcp_stream.wrap_err("Error getting TCP stream in storeSCP")?;
@@ -265,103 +269,70 @@ fn create_cstore_response(
     sop_class_uid: &str,
     sop_instance_uid: &str,
 ) -> InMemDicomObject<StandardDataDictionary> {
-    let mut obj = InMemDicomObject::new_empty();
-
-    // group length
-    obj.put(DataElement::new(
-        tags::COMMAND_GROUP_LENGTH,
-        VR::UL,
-        PrimitiveValue::from(
-            8 + sop_class_uid.len() as i32
-                + 8
-                + 2
-                + 8
-                + 2
-                + 8
-                + 2
-                + 8
-                + 2
-                + sop_instance_uid.len() as i32,
+    let elements = [
+        DataElement::new(
+            tags::COMMAND_GROUP_LENGTH,
+            VR::UL,
+            PrimitiveValue::from(
+                8 + sop_class_uid.len() as i32
+                    + 8
+                    + 2
+                    + 8
+                    + 2
+                    + 8
+                    + 2
+                    + 8
+                    + 2
+                    + sop_instance_uid.len() as i32,
+            ),
         ),
-    ));
+        DataElement::new(
+            tags::AFFECTED_SOP_CLASS_UID,
+            VR::UI,
+            dicom_value!(Str, sop_class_uid),
+        ),
+        DataElement::new(tags::COMMAND_FIELD, VR::US, dicom_value!(U16, [0x8001])),
+        DataElement::new(
+            tags::MESSAGE_ID_BEING_RESPONDED_TO,
+            VR::US,
+            dicom_value!(U16, [message_id]),
+        ),
+        DataElement::new(
+            tags::COMMAND_DATA_SET_TYPE,
+            VR::US,
+            dicom_value!(U16, [0x0101]),
+        ),
+        DataElement::new(tags::STATUS, VR::US, dicom_value!(U16, [0x0000])),
+        DataElement::new(
+            tags::AFFECTED_SOP_INSTANCE_UID,
+            VR::UI,
+            dicom_value!(Str, sop_instance_uid),
+        ),
+    ];
 
-    // service
-    obj.put(DataElement::new(
-        tags::AFFECTED_SOP_CLASS_UID,
-        VR::UI,
-        dicom_value!(Str, sop_class_uid),
-    ));
-    // command
-    obj.put(DataElement::new(
-        tags::COMMAND_FIELD,
-        VR::US,
-        dicom_value!(U16, [0x8001]),
-    ));
-    // message ID being responded to
-    obj.put(DataElement::new(
-        tags::MESSAGE_ID_BEING_RESPONDED_TO,
-        VR::US,
-        dicom_value!(U16, [message_id]),
-    ));
-    // data set type
-    obj.put(DataElement::new(
-        tags::COMMAND_DATA_SET_TYPE,
-        VR::US,
-        dicom_value!(U16, [0x0101]),
-    ));
-    // status https://dicom.nema.org/dicom/2013/output/chtml/part07/chapter_C.html
-    obj.put(DataElement::new(
-        tags::STATUS,
-        VR::US,
-        dicom_value!(U16, [0x0000]),
-    ));
-    // SOPInstanceUID
-    obj.put(DataElement::new(
-        tags::AFFECTED_SOP_INSTANCE_UID,
-        VR::UI,
-        dicom_value!(Str, sop_instance_uid),
-    ));
-
-    obj
+    InMemDicomObject::from_element_iter(elements.iter().cloned())
 }
 
 fn create_cecho_response(message_id: u16) -> InMemDicomObject<StandardDataDictionary> {
-    let mut obj = InMemDicomObject::new_empty();
+    let elements = [
+        DataElement::new(
+            tags::COMMAND_GROUP_LENGTH,
+            VR::UL,
+            PrimitiveValue::from(8 + 8 + 2 + 8 + 2 + 8 + 2),
+        ),
+        DataElement::new(tags::COMMAND_FIELD, VR::US, dicom_value!(U16, [0x8030])),
+        DataElement::new(
+            tags::MESSAGE_ID_BEING_RESPONDED_TO,
+            VR::US,
+            dicom_value!(U16, [message_id]),
+        ),
+        DataElement::new(
+            tags::COMMAND_DATA_SET_TYPE,
+            VR::US,
+            dicom_value!(U16, [0x0101]),
+        ),
+        DataElement::new(tags::STATUS, VR::US, dicom_value!(U16, [0x0000])),
+    ];
 
-    // group length
-    obj.put(DataElement::new(
-        tags::COMMAND_GROUP_LENGTH,
-        VR::UL,
-        PrimitiveValue::from(8 + 8 + 2 + 8 + 2 + 8 + 2),
-    ));
-
-    // command field
-    obj.put(DataElement::new(
-        tags::COMMAND_FIELD,
-        VR::US,
-        dicom_value!(U16, [0x8030]),
-    ));
-
-    // message ID being responded to
-    obj.put(DataElement::new(
-        tags::MESSAGE_ID_BEING_RESPONDED_TO,
-        VR::US,
-        dicom_value!(U16, [message_id]),
-    ));
-
-    // data set type
-    obj.put(DataElement::new(
-        tags::COMMAND_DATA_SET_TYPE,
-        VR::US,
-        dicom_value!(U16, [0x0101]),
-    ));
-
-    // status
-    obj.put(DataElement::new(
-        tags::STATUS,
-        VR::US,
-        dicom_value!(U16, [0x0000]),
-    ));
-
-    obj
+    InMemDicomObject::from_element_iter(elements.iter().cloned())
 }

@@ -1,77 +1,53 @@
-use std::{collections::HashMap, path::PathBuf, net::Ipv4Addr};
+use std::{collections::HashMap, net::Ipv4Addr};
 
 use crate::utils::{Channel, Config, Node};
 
 pub(crate) fn bogus_channel() -> Channel {
-    let mut channel = HashMap::new();
-    let node1 = Node {
-        aet: "NOEUD1".to_string(),
-        ip: Ipv4Addr::from(0).to_string(),
-        port: 11112,
-        uncompressed_only: false,
-        max_pdu: 16384,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    let node2 = Node {
-        aet: "NOEUD1.2".to_string(),
-        ip: "192.168.10.140".to_string(),
-        port: 11113,
-        max_pdu: 16384,
-        uncompressed_only: false,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    channel.insert(node1, vec![node2]);
-    channel
+    let mut addresses = HashMap::new();
+    let node1 = Node::new("NOEUD1in".to_string(), Ipv4Addr::from(0).to_string(), 11112);
+    let node2 = Node::new("NOEUD1out".to_string(), "192.168.10.140".to_string(), 11114);
+    addresses.insert(node1, vec![node2]);
+
+    Channel {
+        addresses,
+        status: Default::default(),
+    }
 }
 
 pub(crate) fn bogus_channel2() -> Channel {
-    let mut channel = HashMap::new();
-    let node1 = Node {
-        aet: "NOEUD2".to_string(),
-        ip: Ipv4Addr::from(0).to_string(),
-        port: 11114,
-        uncompressed_only: false,
-        max_pdu: 16384,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    let node2 = Node {
-        aet: "NOEUD2.2".to_string(),
-        ip: "192.168.10.140".to_string(),
-        port: 11115,
-        max_pdu: 16384,
-        uncompressed_only: false,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    channel.insert(node1, vec![node2]);
-    channel
+    let mut addresses = HashMap::new();
+    let node1 = Node::new("NOEUD2in".to_string(), Ipv4Addr::from(0).to_string(), 11113);
+    let node2 = Node::new("NOEUD2out".to_string(), "192.168.10.140".to_string(), 11115);
+    addresses.insert(node1, vec![node2]);
+
+    Channel {
+        addresses,
+        status: Default::default(),
+    }
 }
 
 pub(crate) fn bogus_channel3() -> Channel {
-    let mut channel = HashMap::new();
-    let node1 = Node {
-        aet: "NOEUD3".to_string(),
-        ip: Ipv4Addr::from(0).to_string(),
-        port: 11114,
-        uncompressed_only: false,
-        max_pdu: 16384,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    let node2 = Node {
-        aet: "NOEUD3.2".to_string(),
-        ip: "192.168.10.140".to_string(),
-        port: 11115,
-        max_pdu: 16384,
-        uncompressed_only: false,
-        strict: false,
-        out_dir: Some(PathBuf::from(".")),
-    };
-    channel.insert(node1, vec![node2]);
-    channel
+    let mut addresses = HashMap::new();
+    let node1 = Node::new("NOEUD3in".to_string(), Ipv4Addr::from(0).to_string(), 11113);
+    let node2 = Node::new("NOEUD2out".to_string(), "192.168.10.140".to_string(), 11115);
+    addresses.insert(node1, vec![node2]);
+
+    Channel {
+        addresses,
+        status: Default::default(),
+    }
+}
+
+pub(crate) fn bogus_channel4() -> Channel {
+    let mut addresses = HashMap::new();
+    let node1 = Node::new("NOEUD3in".to_string(), Ipv4Addr::from(0).to_string(), 11116);
+    let node2 = Node::new("NOEUD2out".to_string(), "192.168.10.140".to_string(), 11115);
+    addresses.insert(node1, vec![node2]);
+
+    Channel {
+        addresses,
+        status: Default::default(),
+    }
 }
 
 pub(crate) fn bogus_config() -> Config {
@@ -83,4 +59,8 @@ pub(crate) fn bogus_config() -> Config {
     config.channels.insert(2, bogus_channel2());
     config.channels.insert(3, bogus_channel3());
     config
+}
+
+pub(crate) fn update_bogus_config(config: &mut Config) {
+    config.channels.insert(4, bogus_channel4());
 }

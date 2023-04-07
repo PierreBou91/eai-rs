@@ -23,16 +23,6 @@ pub(crate) struct Channel {
     pub(crate) status: Status,
 }
 
-// impl Channel {
-//     pub(crate) fn new(name: String) -> Self {
-//         Self {
-//             name,
-//             addresses: HashMap::new(),
-//             status: Default::default(),
-//         }
-//     }
-// }
-
 /// A Node is a data structure representing a dicom destination
 /// At the moment of this writing it mainly represents an abstraction
 /// over a C-STORE scp.
@@ -176,16 +166,6 @@ impl Config {
             log_level: Level::INFO,
         }
     }
-
-    // pub(crate) fn nodes(&self) -> Vec<Node> {
-    //     let mut nodes = Vec::new();
-    //     for channel in self.channels.values() {
-    //         for (node, _) in channel.addresses.iter() {
-    //             nodes.push(node.clone());
-    //         }
-    //     }
-    //     nodes
-    // }
 
     /// Returns a list of actions that need to be performed.
     /// It is important to use this method on the config passing

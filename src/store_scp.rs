@@ -16,7 +16,6 @@ use tracing::{debug, info, warn};
 
 use crate::utils::{Node, Status, ABSTRACT_SYNTAXES};
 
-/// store_SCP is a DICOM node that stores incoming data
 pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
     let listen_addr = SocketAddrV4::new(Ipv4Addr::from(0), node.port);
     let listener = match TcpListener::bind(listen_addr) {
@@ -97,7 +96,6 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
             }
             match association.receive() {
                 Ok(mut pdu) => {
-                    debug!("scu ----> scp: {}", pdu.short_description()); // TODO: relevance ?
                     match pdu {
                         Pdu::PData { ref mut data } => {
                             if data.is_empty() {
@@ -109,7 +107,7 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
                             } else if data[0].value_type == PDataValueType::Command
                                 && data[0].is_last
                             {
-                                // commands are always in implict VR LE
+                                // Commands are always in implict VR LE
                                 let ts =
                             dicom_transfer_syntax_registry::entries::IMPLICIT_VR_LITTLE_ENDIAN
                                 .erased();
@@ -203,7 +201,7 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
                                     .wrap_err("Failed to build DICOM meta file information")?;
                                 let file_obj = obj.with_exact_meta(file_meta);
 
-                                // write the files to the current directory with their SOPInstanceUID as filenames
+                                // Write the files to the current directory with their SOPInstanceUID as filenames
                                 let mut file_path =
                                     node.out_dir.clone().wrap_err("Could not get out dir")?;
                                 file_path.push(
@@ -214,7 +212,7 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
                                     .wrap_err("Could not save DICOM object to file")?;
                                 info!("Stored {}", file_path.display());
 
-                                // send C-STORE-RSP object
+                                // Send C-STORE-RSP object
                                 // commands are always in implict VR LE
                                 let ts =
                                 dicom_transfer_syntax_registry::entries::IMPLICIT_VR_LITTLE_ENDIAN

@@ -41,7 +41,7 @@ pub(crate) struct Channel {
 /// IMPROVE: There might be a better way to do this abstraction
 pub(crate) struct Node {
     /// The AET of the node
-    aet: String,
+    aet: String, // This CANNOT be mutable since it is used as a key in a HashMap
     /// The IP address of the node
     pub(crate) ip: String,
     /// The port of the node

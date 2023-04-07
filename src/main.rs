@@ -77,16 +77,6 @@ fn main() -> color_eyre::Result<()> {
                 }
             }
 
-            // let nodes = config.nodes();
-
-            // for mut node in nodes {
-            //     info!(
-            //         "Launching the storescp for {} at {}:{}",
-            //         node.aet, node.ip, node.port
-            //     );
-            //     let handle = thread::spawn(move || node.start_node());
-            //     handles.push(handle);
-            // }
             // Bogus state update
             state = config.clone();
         }
@@ -99,9 +89,4 @@ fn main() -> color_eyre::Result<()> {
         // sleep to go easy on the CPU
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-
-    // Wait for all threads to complete
-    // for handle in handles {
-    //     handle.join().unwrap();
-    // }
 }

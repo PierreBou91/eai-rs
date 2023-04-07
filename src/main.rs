@@ -1,4 +1,4 @@
-use std::thread;
+use std::{collections::HashMap, thread};
 
 use bogus::bogus_config;
 use color_eyre::eyre::Context;
@@ -11,6 +11,9 @@ pub mod bogus;
 pub mod store_scp;
 pub mod utils;
 
+// necessary to use the AET as a key in the HashMap
+// IMPROVE: find a way to remove this
+#[allow(clippy::mutable_key_type)]
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
@@ -27,7 +30,7 @@ fn main() -> color_eyre::Result<()> {
 
     debug!("{:?}", config);
 
-    let mut handles = vec![];
+    let mut handles = HashMap::new();
 
     let mut bogus_wait = 0;
     loop {
@@ -36,17 +39,54 @@ fn main() -> color_eyre::Result<()> {
         if !(config == state) {
             info!("Config has changed, updating the state");
 
-            let nodes = config.nodes();
+            let actions = state.diff(&config);
 
-            for mut node in nodes {
-                info!(
-                    "Launching the storescp for {} at {}:{}",
-                    node.aet, node.ip, node.port
-                );
-                info!("Node status: {:?}", node.status);
-                let handle = thread::spawn(move || store_scp(&mut node).unwrap());
-                handles.push(handle);
+            for action in actions {
+                match action {
+                    utils::Actions::Create(channel) => {
+                        info!("Creating channel {}", channel.name);
+                        let addresses = channel.addresses.clone();
+                        for (mut node, _) in addresses {
+                            info!(
+                                "Launching the storescp for {} at {}:{}",
+                                node.aet(),
+                                node.ip,
+                                node.port
+                            );
+                            let aet = node.aet().clone();
+                            let handle = thread::spawn(move || node.start_node());
+                            handles.insert(aet, handle);
+                        }
+                    }
+                    utils::Actions::Modify(_) => todo!(),
+                    utils::Actions::Delete(channel) => {
+                        info!("Deleting channel {}", channel.name);
+                        let addresses = channel.addresses.clone();
+                        for (mut node, _) in addresses {
+                            info!(
+                                "Stopping the storescp for {} at {}:{}",
+                                node.aet(),
+                                node.ip,
+                                node.port
+                            );
+                            node.stop_node();
+                            let handle = handles.remove(&node.aet().clone()).unwrap();
+                            handle.join().unwrap();
+                        }
+                    }
+                }
             }
+
+            // let nodes = config.nodes();
+
+            // for mut node in nodes {
+            //     info!(
+            //         "Launching the storescp for {} at {}:{}",
+            //         node.aet, node.ip, node.port
+            //     );
+            //     let handle = thread::spawn(move || node.start_node());
+            //     handles.push(handle);
+            // }
             // Bogus state update
             state = config.clone();
         }

@@ -8,7 +8,10 @@ use dicom::{
     transfer_syntax::TransferSyntaxRegistry,
 };
 use dicom_ul::{association::ServerAssociationOptions, pdu::PDataValueType, Pdu};
-use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+use std::{
+    net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    sync::atomic::Ordering,
+};
 use tracing::{debug, info, warn};
 
 use crate::utils::{Node, Status, ABSTRACT_SYNTAXES};
@@ -35,7 +38,7 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
 
     let mut options = ServerAssociationOptions::new()
         .accept_any() // TODO: accept only the peers in the config
-        .ae_title(node.aet.clone())
+        .ae_title(node.aet().clone())
         .strict(node.strict);
 
     if node.uncompressed_only {
@@ -54,12 +57,16 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
         options = options.with_abstract_syntax(*uid);
     }
 
-    debug!("Dicom node {:?} configuration: {:?}", node.aet, options); // TODO: improve the debug output
+    debug!("Dicom node {:?} configuration: {:?}", node.aet(), options); // TODO: improve the debug output
 
-    info!("{:?} listening on {}:{}", node.aet, node.ip, node.port);
+    info!("{:?} listening on {}:{}", node.aet(), node.ip, node.port);
     node.status = Status::Started;
 
     for tcp_stream in listener.incoming() {
+        if node.shutdown_signal.load(Ordering::SeqCst) {
+            info!("Shutting down store_scp for {}", node.aet());
+            break;
+        }
         let stream = tcp_stream.wrap_err("Error getting TCP stream in storeSCP")?;
         info!(
             "New tcp connection from: {}",
@@ -83,6 +90,11 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
         );
 
         loop {
+            if node.shutdown_signal.load(Ordering::SeqCst) {
+                // TODO: Handle the abort/release request
+                info!("Shutting down store_scp for {}", node.aet());
+                break;
+            }
             match association.receive() {
                 Ok(mut pdu) => {
                     debug!("scu ----> scp: {}", pdu.short_description()); // TODO: relevance ?
@@ -269,7 +281,7 @@ fn create_cstore_response(
     sop_class_uid: &str,
     sop_instance_uid: &str,
 ) -> InMemDicomObject<StandardDataDictionary> {
-    let elements = [
+    InMemDicomObject::from_element_iter([
         DataElement::new(
             tags::COMMAND_GROUP_LENGTH,
             VR::UL,
@@ -308,13 +320,11 @@ fn create_cstore_response(
             VR::UI,
             dicom_value!(Str, sop_instance_uid),
         ),
-    ];
-
-    InMemDicomObject::from_element_iter(elements.iter().cloned())
+    ])
 }
 
 fn create_cecho_response(message_id: u16) -> InMemDicomObject<StandardDataDictionary> {
-    let elements = [
+    InMemDicomObject::from_element_iter([
         DataElement::new(
             tags::COMMAND_GROUP_LENGTH,
             VR::UL,
@@ -332,7 +342,5 @@ fn create_cecho_response(message_id: u16) -> InMemDicomObject<StandardDataDictio
             dicom_value!(U16, [0x0101]),
         ),
         DataElement::new(tags::STATUS, VR::US, dicom_value!(U16, [0x0000])),
-    ];
-
-    InMemDicomObject::from_element_iter(elements.iter().cloned())
+    ])
 }

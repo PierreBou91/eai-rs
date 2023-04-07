@@ -1,4 +1,4 @@
-# eai-rs Project in Rust
+# eai-rs
 
 eai-rs is an open-source project that aims to provide a robust and efficient implementation of an Enterprise Application Integration (EAI) system for medical imaging, specifically targeting the DICOM standard, using the Rust programming language.
 

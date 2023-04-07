@@ -17,7 +17,6 @@ pub mod utils;
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
-    // read the config
     let mut config = bogus_config();
     let mut state = State::new();
 
@@ -34,8 +33,6 @@ fn main() -> color_eyre::Result<()> {
 
     let mut bogus_wait = 0;
     loop {
-        // Some break condition
-        // compare config to state
         if !(config == state) {
             info!("Config has changed, updating the state");
 

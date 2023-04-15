@@ -2,11 +2,14 @@ use core::hash::Hash;
 use std::{
     collections::HashMap,
     fmt,
+    fs::File,
     hash::Hasher,
-    path::PathBuf,
+    io::{BufReader, BufWriter, Error},
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
-use tracing::Level;
+
+use serde::{Deserialize, Serialize};
 
 use crate::store_scp;
 
@@ -16,10 +19,11 @@ use crate::store_scp;
 /// The program will try to launch a C-STORE scp with the origin
 /// node (if the status is set to Started) that forwards the data
 /// to the destination nodes.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub(crate) struct Channel {
     pub(crate) name: String,
-    pub(crate) addresses: HashMap<Node, Vec<Node>>,
+    pub(crate) source: Node,
+    pub(crate) destinations: Vec<Node>,
     pub(crate) status: Status,
 }
 
@@ -29,9 +33,10 @@ pub(crate) struct Channel {
 /// It is used to represent both the source and the destination of a
 /// channel and does not discriminate between the two.
 /// IMPROVE: There might be a better way to do this abstraction
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Node {
     /// The AET of the node
-    aet: String, // This CANNOT be mutable since it is used as a key in a HashMap
+    pub(crate) aet: String, // This CANNOT be mutable since it is used as a key in a HashMap
     /// The IP address of the node
     pub(crate) ip: String,
     /// The port of the node
@@ -103,30 +108,30 @@ impl Clone for Node {
 impl Hash for Node {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.aet.hash(state);
-        self.ip.hash(state);
-        self.port.hash(state);
-        self.uncompressed_only.hash(state);
-        self.max_pdu.hash(state);
-        self.strict.hash(state);
-        self.out_dir.hash(state);
-        self.status.hash(state);
+        // self.ip.hash(state);
+        // self.port.hash(state);
+        // self.uncompressed_only.hash(state);
+        // self.max_pdu.hash(state);
+        // self.strict.hash(state);
+        // self.out_dir.hash(state);
+        // self.status.hash(state);
     }
 }
 
 impl Node {
-    pub(crate) fn new(aet: String, ip: String, port: u16) -> Self {
-        Self {
-            aet,
-            ip,
-            port,
-            uncompressed_only: false,
-            strict: false,
-            max_pdu: 16384,
-            out_dir: Some(PathBuf::from(".")),
-            status: Default::default(),
-            shutdown_signal: AtomicBool::new(false),
-        }
-    }
+    // pub(crate) fn new(aet: String, ip: String, port: u16) -> Self {
+    //     Self {
+    //         aet,
+    //         ip,
+    //         port,
+    //         uncompressed_only: false,
+    //         strict: false,
+    //         max_pdu: 16384,
+    //         out_dir: Some(PathBuf::from(".")),
+    //         status: Default::default(),
+    //         shutdown_signal: AtomicBool::new(false),
+    //     }
+    // }
 
     pub(crate) fn start_node(&mut self) {
         self.shutdown_signal.store(false, Ordering::SeqCst);
@@ -144,27 +149,64 @@ impl Node {
     }
 }
 
-#[derive(Default, Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Default, Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub(crate) enum Status {
     Started,
     #[default]
     Stopped,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Default, Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub(crate) enum LogLevel {
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub(crate) fn to_tracing_level(&self) -> tracing::Level {
+        match self {
+            LogLevel::Debug => tracing::Level::DEBUG,
+            LogLevel::Info => tracing::Level::INFO,
+            LogLevel::Warn => tracing::Level::WARN,
+            LogLevel::Error => tracing::Level::ERROR,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub(crate) struct Config {
     /// A map of channels to their id
     pub(crate) channels: HashMap<u64, Channel>,
     /// The log level of the application
-    pub(crate) log_level: Level,
+    pub(crate) log_level: LogLevel,
 }
 
 impl Config {
     pub(crate) fn new() -> Self {
         Self {
             channels: HashMap::new(),
-            log_level: Level::INFO,
+            log_level: LogLevel::Info,
         }
+    }
+
+    pub(crate) fn from_json_file(path: &Path) -> Result<Self, Error> {
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(_) => return Ok(Self::new()),
+        };
+        let reader = BufReader::new(file);
+        let config: Config = serde_json::from_reader(reader)?;
+        Ok(config)
+    }
+
+    pub(crate) fn to_json_file(&self, path: &Path) -> Result<(), Error> {
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(writer, self)?;
+        Ok(())
     }
 
     /// Returns a list of actions that need to be performed.

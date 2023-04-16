@@ -10,6 +10,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::store_scp;
 
@@ -108,31 +109,10 @@ impl Clone for Node {
 impl Hash for Node {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.aet.hash(state);
-        // self.ip.hash(state);
-        // self.port.hash(state);
-        // self.uncompressed_only.hash(state);
-        // self.max_pdu.hash(state);
-        // self.strict.hash(state);
-        // self.out_dir.hash(state);
-        // self.status.hash(state);
     }
 }
 
 impl Node {
-    // pub(crate) fn new(aet: String, ip: String, port: u16) -> Self {
-    //     Self {
-    //         aet,
-    //         ip,
-    //         port,
-    //         uncompressed_only: false,
-    //         strict: false,
-    //         max_pdu: 16384,
-    //         out_dir: Some(PathBuf::from(".")),
-    //         status: Default::default(),
-    //         shutdown_signal: AtomicBool::new(false),
-    //     }
-    // }
-
     pub(crate) fn start_node(&mut self) {
         self.shutdown_signal.store(false, Ordering::SeqCst);
         self.status = Status::Started;
@@ -140,6 +120,7 @@ impl Node {
     }
 
     pub(crate) fn stop_node(&mut self) {
+        info!("Stopping node {}...", self.aet);
         self.shutdown_signal.store(true, Ordering::SeqCst);
         self.status = Status::Stopped;
     }
@@ -212,20 +193,20 @@ impl Config {
     /// Returns a list of actions that need to be performed.
     /// It is important to use this method on the config passing
     /// the state and not the other way around.
-    pub(crate) fn diff(&self, config: &Config) -> Vec<Actions<Channel>> {
+    pub(crate) fn diff<'a>(&'a self, config: &'a Config) -> Vec<Actions<'a>> {
         let mut actions = Vec::new();
         for (id, channel) in self.channels.iter() {
             if let Some(other_channel) = config.channels.get(id) {
                 if channel != other_channel {
-                    actions.push(Actions::Modify(channel.clone()));
+                    actions.push(Actions::Modify(channel));
                 }
             } else {
-                actions.push(Actions::Delete(channel.clone()));
+                actions.push(Actions::Delete(channel));
             }
         }
         for (id, channel) in config.channels.iter() {
             if !self.channels.contains_key(id) {
-                actions.push(Actions::Create(channel.clone()));
+                actions.push(Actions::Create(channel));
             }
         }
         actions
@@ -233,10 +214,10 @@ impl Config {
 }
 
 #[derive(Debug)]
-pub(crate) enum Actions<T> {
-    Create(T),
-    Modify(T),
-    Delete(T),
+pub(crate) enum Actions<'a> {
+    Create(&'a Channel),
+    Modify(&'a Channel),
+    Delete(&'a Channel),
 }
 
 pub(crate) type State = Config;

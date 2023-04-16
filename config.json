@@ -1,4 +1,61 @@
 {
-  "channels": {},
+  "channels": {
+    "1": {
+      "name": "NOEUD1in",
+      "source": {
+        "aet": "NOEUD1in",
+        "ip": "0.0.0.0",
+        "port": 11112,
+        "uncompressed_only": false,
+        "max_pdu": 16384,
+        "strict": false,
+        "out_dir": ".",
+        "status": "Stopped",
+        "shutdown_signal": false
+      },
+      "destinations": [
+        {
+          "aet": "NOEUD1out",
+          "ip": "192.168.10.140",
+          "port": 11114,
+          "uncompressed_only": false,
+          "max_pdu": 16384,
+          "strict": false,
+          "out_dir": ".",
+          "status": "Stopped",
+          "shutdown_signal": false
+        }
+      ],
+      "status": "Stopped"
+    },
+    "2": {
+      "name": "NOEUD2in",
+      "source": {
+        "aet": "NOEUD2in",
+        "ip": "0.0.0.0",
+        "port": 11113,
+        "uncompressed_only": false,
+        "max_pdu": 16384,
+        "strict": false,
+        "out_dir": ".",
+        "status": "Stopped",
+        "shutdown_signal": false
+      },
+      "destinations": [
+        {
+          "aet": "NOEUD1out",
+          "ip": "192.168.10.140",
+          "port": 11114,
+          "uncompressed_only": false,
+          "max_pdu": 16384,
+          "strict": false,
+          "out_dir": ".",
+          "status": "Stopped",
+          "shutdown_signal": false
+        }
+      ],
+      "status": "Stopped"
+    }
+  },
   "log_level": "Info"
 }

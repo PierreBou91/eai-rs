@@ -62,7 +62,12 @@ pub(crate) fn store_scp(node: &mut Node) -> color_eyre::Result<()> {
     node.status = Status::Started;
 
     for tcp_stream in listener.incoming() {
+        info!(
+            "Node shutdown signal: {}",
+            node.shutdown_signal.load(Ordering::SeqCst)
+        );
         if node.shutdown_signal.load(Ordering::SeqCst) {
+            info!("I was there");
             info!("Shutting down store_scp for {}", node.aet());
             break;
         }
